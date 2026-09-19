@@ -1,8 +1,13 @@
 # Báo Cáo Nhóm — Lab 7: Embedding & Vector Store
 
-**Nhóm:** [Tên nhóm]
-**Thành viên:** [Họ tên từng thành viên]
-**Ngày:** [Ngày nộp]
+**Nhóm:** DDGPT
+**Thành viên:** 
+Trần Nguyễn Thái Duy 
+Đinh Mạnh Dũng 
+Nguyễn Hồng Phi 
+Phạm Thành Trung 
+Từ Hoàng Giang
+**Ngày:** 19/09/2026
 
 > **Nộp 1 bản / nhóm.** Phần cá nhân (hướng tiếp cận, kết quả riêng, dự đoán…) mỗi thành viên nộp riêng trong `REPORT_CANHAN.md`. Chi tiết thang điểm: `docs/SCORING.md`.
 
@@ -75,59 +80,82 @@ Chạy `ChunkingStrategyComparator().compare()` trên 3 tài liệu tiêu biểu
 
 ### Chiến lược của từng thành viên
 
-**Thành viên 1 — [Thành viên 1]**
+**Thành viên 1 — Đinh Mạnh Dũng**
 - **Loại chiến lược:** Recursive (`RecursiveChunker`, chunk_size=400)
-- **Mô tả & lý do chọn cho chủ đề này:** Phân tách phân cấp theo danh sách separator `["\n\n", "\n", ". ", " ", ""]` kết hợp gom cụm mảnh nhỏ liền kề. Phù hợp nhất cho văn bản quy định học vụ vì giữ trọn cấu trúc đoạn văn, hạn chế tối đa việc tạo chunk vụn hoặc cắt ngang giữa chừng.
+- **Mô tả & lý do chọn cho chủ đề này:** Phân tách phân cấp theo danh sách separator `["\n\n", "\n", ". ", " ", ""]` kết hợp gom cụm mảnh nhỏ liền kề. Phù hợp cho văn bản quy định học vụ vì giữ trọn cấu trúc đoạn văn, hạn chế tối đa việc tạo chunk vụn hoặc cắt ngang giữa chừng.
+- **Cấu hình & Kết quả:** Sinh ra 64 chunks trên corpus UTSC Library; kết hợp với `search_with_filter` (pre-filtering) để giải quyết xung đột tài liệu giữa sinh viên và giảng viên.
 - **Code snippet:**
 ```python
 from src.chunking import RecursiveChunker
 chunker = RecursiveChunker(chunk_size=400)
 ```
 
-**Thành viên 2 — [Thành viên 2]**
-- **Loại chiến lược:** Fixed-Size with Overlap (`FixedSizeChunker`, chunk_size=400, overlap=50)
-- **Mô tả & lý do chọn:** Cắt văn bản theo kích thước cố định 400 ký tự, bước nhảy 350 ký tự để tạo vùng chồng chéo 50 ký tự. Được chọn làm đường cơ sở chuẩn để đánh giá xem vùng chồng chéo (overlap) có đủ bù đắp nhược điểm cắt ngang từ/câu hay không.
-- **Code snippet:**
-```python
-from src.chunking import FixedSizeChunker
-chunker = FixedSizeChunker(chunk_size=400, overlap=50)
-```
-
-**Thành viên 3 — [Thành viên 3]**
-- **Loại chiến lược:** Custom Heading-based (`HeadingChunker`, max_chunk_size=400)
-- **Mô tả & lý do chọn:** Tách văn bản theo các tiêu đề Markdown (`#`, `##`, `###`). Với các mục dài hơn ngưỡng, chia nhỏ tiếp bằng recursive nhưng luôn gắn lại dòng tiêu đề vào đầu mỗi chunk con để duy trì ngữ cảnh phân cấp của văn bản quy định.
+**Thành viên 2 — Phạm Thanh Trung**
+- **Loại chiến lược:** Heading/structural + Recursive fallback.
+- **Cấu hình đã kiểm thử:** Tách tài liệu tại heading Markdown cấp 1–3 (`#`, `##`, `###`), giữ heading cùng nội dung; section dài hơn 700 ký tự được chia tiếp bằng `RecursiveChunker`; truy xuất `top_k=3`.
+- **Mô tả & lý do chọn:** Tài liệu dịch vụ thư viện UTSC được tổ chức thành các mục rõ ràng như Loan privileges, Physical course reserves và TSpace. Tách theo heading giúp mỗi chunk giữ đúng chủ đề và dễ truy vết về mục gốc. Recursive fallback xử lý section quá dài mà vẫn ưu tiên ranh giới đoạn, dòng, câu và từ, hạn chế cắt giữa một quy định.
+- **Metadata filter:** Dùng `category=opening-hours` cho câu giờ mở cửa, `audience=student` cho câu borrowing và course reserves, `category=technology-lending` cho câu trả laptop, và `audience=faculty` cho câu TSpace.
 - **Code snippet (custom):**
 ```python
 class HeadingChunker:
-    def __init__(self, max_chunk_size: int = 400) -> None:
-        self.max_chunk_size = max_chunk_size
-        self._fallback = RecursiveChunker(chunk_size=max_chunk_size)
+    def __init__(self, chunk_size: int = 700) -> None:
+        self.chunk_size = chunk_size
+        self.fallback = RecursiveChunker(chunk_size=chunk_size)
 
     def chunk(self, text: str) -> list[str]:
-        sections = re.split(r"(?=(?:^|\n)#{1,3}\s+)", text.strip())
+        sections = re.split(r"(?=^#{1,3}\s)", text, flags=re.MULTILINE)
         chunks = []
-        for s in sections:
-            s = s.strip()
-            if not s: continue
-            if len(s) <= self.max_chunk_size:
-                chunks.append(s)
+        for section in sections:
+            section = section.strip()
+            if not section:
+                continue
+            if len(section) <= self.chunk_size:
+                chunks.append(section)
             else:
-                first_line = s.split("\n", 1)[0]
-                for sc in self._fallback.chunk(s):
-                    chunks.append(sc if sc.startswith("#") else f"{first_line}\n\n{sc}")
+                heading_match = re.match(r"^(#{1,3}\s[^\n]+)\n+", section)
+                heading = heading_match.group(1) if heading_match else ""
+                body = section[heading_match.end():] if heading_match else section
+                for piece in self.fallback.chunk(body):
+                    chunks.append(f"{heading}\n\n{piece}".strip())
         return chunks
 ```
+- **Kết quả kiểm thử:** Đạt retrieval top-3 **5/5** và agent answer **5/5**, với tổng cộng 25 chunks.
+
+**Thành viên 3 — Từ Hoàng Giang**
+- **Loại chiến lược:** Custom Parent-child
+- **Cấu hình dự kiến:** Dùng chunk con khoảng 200–300 ký tự để tìm kiếm và section cha khoảng 500–800 ký tự để đưa vào ngữ cảnh trả lời.
+- **Mô tả & lý do chọn:** Chunk con nhỏ giúp tăng độ chính xác truy xuất, còn chunk cha giữ đủ nội dung của mục dịch vụ hoặc quy định. Cấu hình này dùng để kiểm tra liệu việc mở rộng ngữ cảnh có khắc phục trường hợp retrieval tìm đúng chi tiết nhưng agent thiếu thông tin xung quanh hay không.
+- **Code snippet (custom):** *(Sẽ bổ sung sau khi triển khai và kiểm thử)*
+
+**Thành viên 4 — Trần Nguyễn Thái Duy**
+- **Loại chiến lược:** *(Đang cập nhật)*
+- **Cấu hình dự kiến:** *(Đang cập nhật)*
+- **Mô tả & lý do chọn:** *(Đang cập nhật)*
+- **Code snippet:** *(Đang cập nhật)*
+
+**Thành viên 5 — Nguyễn Hồng Phi**
+- **Loại chiến lược:** *(Đang cập nhật)*
+- **Cấu hình dự kiến:** *(Đang cập nhật)*
+- **Mô tả & lý do chọn:** *(Đang cập nhật)*
+- **Code snippet:** *(Đang cập nhật)*
 
 ### So Sánh Giữa Các Thành Viên
 
 | Thành viên | Chiến lược (Strategy) | Điểm truy xuất (/10) | Điểm mạnh | Điểm yếu |
-|-----------|----------|----------------------|-----------|----------|
-| Thành viên 1 | RecursiveChunker | 3 / 10 | Phân đoạn cân đối, giữ trọn vẹn ngữ cảnh đoạn và câu, lọt top-3 câu 2 và câu 4 (A/B). | Cần tinh chỉnh danh sách separators phù hợp với từng định dạng tài liệu. |
-| Thành viên 2 | FixedSizeChunker | 2 / 10 | Đơn giản, độ dài chunk đồng đều, overlap giúp giảm đứt gãy. | Dễ cắt ngang bảng biểu hoặc điều khoản giữa chừng, mất liên kết tiêu đề. |
-| Thành viên 3 | HeadingChunker | 2 / 10 | Giữ tính phân cấp ngữ nghĩa của sổ tay/quy định cực tốt. | Các heading ngắn sinh ra chunk nhỏ, các section dài cần fallback thêm. |
+|---|---|---|---|---|
+| Đinh Mạnh Dũng | RecursiveChunker (chunk_size=400) | 3 / 10 | Phân đoạn cân đối, tự nhiên theo đoạn/câu, tổng 64 chunks, giữ nguyên điều khoản học vụ. | Bị ảnh hưởng khi dùng MockEmbedder (không mã hóa ngữ nghĩa); cần kết hợp metadata filter để lọt top-3. |
+| Phạm Thanh Trung | HeadingChunker + Recursive fallback (chunk_size=700) | 10 / 10 (5/5 queries) | Bảo toàn hoàn hảo ranh giới cấu trúc Markdown, chỉ 25 chunks cô đọng, giữ heading ở mọi chunk con, retrieval và agent answer đều đạt 5/5. | Phụ thuộc vào chất lượng heading của Markdown gốc; nếu tài liệu không có heading chuẩn sẽ suy biến về fallback. |
+| Từ Hoàng Giang | Custom Parent-child (Child: 200–300, Parent: 500–800) | Đang thử nghiệm | Tối ưu hóa kép: vector search chính xác trên chunk con, LLM đọc ngữ cảnh đầy đủ từ chunk cha. | Độ phức tạp triển khai cao hơn, cần quản lý quan hệ mapping giữa chunk cha và con trong vector store. |
+| Trần Nguyễn Thái Duy | *(Chờ cập nhật)* | - | *(Chờ bổ sung)* | *(Chờ bổ sung)* |
+| Nguyễn Hồng Phi | *(Chờ cập nhật)* | - | *(Chờ bổ sung)* | *(Chờ bổ sung)* |
 
 **Chiến lược nào tốt nhất cho chủ đề này? Tại sao?**
-> `RecursiveChunker` và `HeadingChunker` cho chất lượng ngữ cảnh tốt nhất đối với quy định đại học. Trong khi `FixedSizeChunker` dễ làm vỡ các bảng hạn mức mượn sách, `RecursiveChunker` tôn trọng ranh giới tự nhiên của các đoạn quy định (`\n\n`), giúp thông tin về điều kiện, con số và mốc thời gian được bảo toàn trọn vẹn trong cùng một chunk.
+> **Chiến lược được ưu tiên theo bài giảng:** Heading/structural (cụ thể là `HeadingChunker` kết hợp Recursive fallback của Phạm Thanh Trung).
+> 
+> **Lý do:**
+> 1. **Phù hợp với cây quyết định bài giảng:** Corpus được lưu dưới dạng Markdown và có hệ thống heading rõ ràng (`#`, `##`, `###`), nên chiến lược này phù hợp nhất với cây quyết định trong bài giảng và có khả năng giữ nguyên từng mục dịch vụ tốt hơn cách cắt thuần theo số ký tự.
+> 2. **Hiệu suất thực tế kiểm chứng:** Kết quả kiểm thử trên 5 benchmark query đạt retrieval top-3 **5/5** và agent answer **5/5**, với tổng cộng 25 chunks.
+> 3. **Bảo tồn ngữ cảnh:** Việc gắn lại heading vào đầu mỗi sub-chunk khi section quá dài giúp duy trì ngữ cảnh mục dịch vụ xuyên suốt quá trình truy xuất.
 
 ---
 
@@ -151,11 +179,11 @@ class HeadingChunker:
 
 | # | Câu hỏi | Chiến lược tốt nhất cho câu này | Có chunk liên quan trong top-3? | Ghi chú |
 |---|---------|-------------------------------|-------------------------------|---------|
-| 1 | Giờ mở cửa thường nhật từ T2-T6 | Cả 3 chiến lược | Không (do MockEmbedder) | MockEmbedder không hiểu nghĩa từ ngữ thời gian, cần mô hình semantic embedding thực. |
-| 2 | Hạn mượn & định mức sinh viên đại học | RecursiveChunker / HeadingChunker | Có (Top-1, Top-2, Top-3) | Tìm đúng bảng hạn mức mượn trong `utsc-borrowing-policy`. Đạt 2/2 điểm. |
-| 3 | Nơi trả laptop mượn | RecursiveChunker / FixedSize | Có tài liệu, lệch chunk | Chunk trả về nêu chung Info Desk nhưng chưa trúng đoạn laptop. |
-| 4 | Vị trí tài liệu dự trữ môn học (Course Reserves) | RecursiveChunker (có filter) | Có (Top-3 khi có filter) | Minh chứng A/B test: Filter giúp loại trừ hoàn toàn tài liệu sai của faculty. Đạt 1/2 điểm. |
-| 5 | Nền tảng lưu trữ TSpace cho nghiên cứu | Cả 3 chiến lược | Không (do MockEmbedder) | Truy vấn tìm kiếm chức năng dịch vụ đòi hỏi embedding hiểu từ đồng nghĩa. |
+| 1 | Giờ mở cửa thường nhật từ T2-T6 | HeadingChunker (với filter `category=hours` hoặc `opening-hours`) | Có (Top-1) với HeadingChunker | Tách đúng section Library Hours; filter category giúp loại bỏ hoàn toàn tài liệu nhiễu. |
+| 2 | Hạn mượn & định mức sinh viên đại học | HeadingChunker / RecursiveChunker (với `audience=student`) | Có (Top-1, Top-2, Top-3) | Tìm đúng bảng hạn mức mượn trong `utsc-borrowing-policy`. Đạt 2/2 điểm ở cả 2 chiến lược. |
+| 3 | Nơi trả laptop mượn | HeadingChunker (với `category=technology`) | Có (Top-1) với HeadingChunker | Giữ trọn section Technology Loans - Laptop Returns và filter category giúp trả lời chính xác Info Desk. |
+| 4 | Vị trí tài liệu dự trữ môn học (Course Reserves) | HeadingChunker / RecursiveChunker (có `audience=student` filter) | Có (Top-1 với HeadingChunker, Top-3 với Recursive) | Minh chứng A/B test: Filter `audience=student` loại trừ hoàn toàn tài liệu faculty, đưa đúng đoạn 20 steps to the left of InfoDesk. |
+| 5 | Nền tảng lưu trữ TSpace cho nghiên cứu | HeadingChunker (với `audience=faculty`) | Có (Top-1) với HeadingChunker | Tách đúng section TSpace và filter `audience=faculty` đưa tài liệu vào top-1. |
 
 **Lọc bằng metadata có giúp ích không? Ở câu hỏi nào?**
 > **Rất hữu ích, đặc biệt rõ rệt ở Câu hỏi 4 (A/B Test):**
