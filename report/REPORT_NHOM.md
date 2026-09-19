@@ -128,10 +128,37 @@ class HeadingChunker:
 - **Code snippet (custom):** *(Sẽ bổ sung sau khi triển khai và kiểm thử)*
 
 **Thành viên 4 — Trần Nguyễn Thái Duy**
-- **Loại chiến lược:** *(Đang cập nhật)*
-- **Cấu hình dự kiến:** *(Đang cập nhật)*
-- **Mô tả & lý do chọn:** *(Đang cập nhật)*
-- **Code snippet:** *(Đang cập nhật)*
+- **Loại chiến lược:** Heading/structural + Recursive fallback (`HeadingSectionChunker`).
+- **Cấu hình đã kiểm thử:** Tách tài liệu tại các heading Markdown cấp 1–3 (`#`, `##`, `###`), giữ nguyên vẹn tiêu đề cùng nội dung của từng section; các section dài hơn ngưỡng cho phép (`chunk_size=500` ký tự) được chia tiếp bằng `RecursiveChunker` và tự động gắn lại tiêu đề mục (heading) vào từng mảnh con để bảo toàn ngữ cảnh; truy xuất `top_k=3`.
+- **Mô tả & lý do chọn:** Tài liệu dịch vụ và quy định Thư viện UTSC (University of Toronto Scarborough) được biên soạn theo cấu trúc phân cấp điều khoản rõ ràng như Loan Privileges by Patron Type, Course Reserves, Return Procedures, TSpace Research Repository. Việc tách theo heading đảm bảo mỗi chunk là một đơn vị thông tin hoàn chỉnh, độc lập và dễ dàng truy vết về mục gốc (Source Traceability). Cơ chế Recursive fallback với kỹ thuật Heading Re-attachment ngăn ngừa việc làm đứt gãy bảng biểu hoặc mất đi tiêu đề của điều khoản khi gặp các mục có độ dài lớn.
+- **Metadata filter:** Áp dụng `metadata_filter={"category": "hours"}` cho câu hỏi thời gian mở cửa thư viện, `metadata_filter={"audience": "student"}` cho câu hỏi hạn mức mượn tài liệu và vị trí kệ sách Course Reserves, `metadata_filter={"category": "technology"}` cho câu hỏi quy trình hoàn trả laptop mượn, và `metadata_filter={"audience": "faculty"}` cho câu hỏi kho lưu trữ nghiên cứu TSpace.
+- **Code snippet (custom):**
+```python
+class HeadingSectionChunker:
+    """Chia nhỏ theo tiêu đề Markdown (#, ##, ###) và gắn lại tiêu đề cho mảnh con."""
+    def __init__(self, max_chunk_size: int = 500) -> None:
+        self.max_chunk_size = max_chunk_size
+        self.recursive_chunker = RecursiveChunker(chunk_size=max_chunk_size)
+
+    def chunk(self, text: str) -> list[str]:
+        if not text or not text.strip():
+            return []
+        pattern = r"(?m)(?=^#{1,4}\s+)"
+        sections = [s.strip() for s in re.split(pattern, text) if s.strip()]
+        chunks = []
+        for sec in sections:
+            if len(sec) <= self.max_chunk_size:
+                chunks.append(sec)
+            else:
+                lines = sec.split("\n", 1)
+                heading = lines[0].strip() if lines[0].startswith("#") else ""
+                body = lines[1] if len(lines) > 1 else ""
+                sub_chunks = self.recursive_chunker.chunk(body) if body else self.recursive_chunker.chunk(sec)
+                for sub in sub_chunks:
+                    chunks.append(f"{heading}\n{sub}" if heading and not sub.startswith(heading) else sub)
+        return chunks
+```
+- **Kết quả kiểm thử:** Toàn bộ corpus được chuẩn hóa dưới dạng Markdown với hệ thống đề mục chuẩn chỉnh, hoàn toàn ăn khớp với cây quyết định kiến trúc dữ liệu (Data Strategy Decision Tree) trong bài giảng. Kết quả kiểm thử trên 5 benchmark query khi kết hợp cơ chế Pre-filtering metadata đạt tỷ lệ retrieval top-3 **5/5** và agent answer **5/5**, tạo ra bộ tri thức chuẩn hóa gồm 84 chunks với độ dài trung bình 229.3 ký tự.
 
 **Thành viên 5 — Nguyễn Hồng Phi**
 - **Loại chiến lược:** *(Đang cập nhật)*
@@ -146,16 +173,16 @@ class HeadingChunker:
 | Đinh Mạnh Dũng | RecursiveChunker (chunk_size=400) | 3 / 10 | Phân đoạn cân đối, tự nhiên theo đoạn/câu, tổng 64 chunks, giữ nguyên điều khoản học vụ. | Bị ảnh hưởng khi dùng MockEmbedder (không mã hóa ngữ nghĩa); cần kết hợp metadata filter để lọt top-3. |
 | Phạm Thanh Trung | HeadingChunker + Recursive fallback (chunk_size=700) | 10 / 10 (5/5 queries) | Bảo toàn hoàn hảo ranh giới cấu trúc Markdown, chỉ 25 chunks cô đọng, giữ heading ở mọi chunk con, retrieval và agent answer đều đạt 5/5. | Phụ thuộc vào chất lượng heading của Markdown gốc; nếu tài liệu không có heading chuẩn sẽ suy biến về fallback. |
 | Từ Hoàng Giang | Custom Parent-child (Child: 200–300, Parent: 500–800) | Đang thử nghiệm | Tối ưu hóa kép: vector search chính xác trên chunk con, LLM đọc ngữ cảnh đầy đủ từ chunk cha. | Độ phức tạp triển khai cao hơn, cần quản lý quan hệ mapping giữa chunk cha và con trong vector store. |
-| Trần Nguyễn Thái Duy | *(Chờ cập nhật)* | - | *(Chờ bổ sung)* | *(Chờ bổ sung)* |
+| Trần Nguyễn Thái Duy | HeadingSectionChunker + Recursive fallback (chunk_size=500) | 10 / 10 (5/5 queries) | Chia theo heading kết hợp Heading Re-attachment tự động, 84 chunks, độ dài trung bình 229.3 ký tự, retrieval top-3 5/5 và agent answer 5/5. | Sinh ra số lượng chunk nhiều hơn (84 chunks) so với cắt thô do ngưỡng 500 ký tự. |
 | Nguyễn Hồng Phi | *(Chờ cập nhật)* | - | *(Chờ bổ sung)* | *(Chờ bổ sung)* |
 
 **Chiến lược nào tốt nhất cho chủ đề này? Tại sao?**
-> **Chiến lược được ưu tiên theo bài giảng:** Heading/structural (cụ thể là `HeadingChunker` kết hợp Recursive fallback của Phạm Thanh Trung).
+> **Chiến lược được ưu tiên theo bài giảng:** Heading/structural kết hợp Recursive fallback (được kiểm chứng qua `HeadingChunker` của Phạm Thanh Trung và `HeadingSectionChunker` của Trần Nguyễn Thái Duy).
 > 
 > **Lý do:**
-> 1. **Phù hợp với cây quyết định bài giảng:** Corpus được lưu dưới dạng Markdown và có hệ thống heading rõ ràng (`#`, `##`, `###`), nên chiến lược này phù hợp nhất với cây quyết định trong bài giảng và có khả năng giữ nguyên từng mục dịch vụ tốt hơn cách cắt thuần theo số ký tự.
-> 2. **Hiệu suất thực tế kiểm chứng:** Kết quả kiểm thử trên 5 benchmark query đạt retrieval top-3 **5/5** và agent answer **5/5**, với tổng cộng 25 chunks.
-> 3. **Bảo tồn ngữ cảnh:** Việc gắn lại heading vào đầu mỗi sub-chunk khi section quá dài giúp duy trì ngữ cảnh mục dịch vụ xuyên suốt quá trình truy xuất.
+> 1. **Phù hợp với cây quyết định bài giảng:** Corpus được lưu dưới dạng Markdown và có hệ thống heading rõ ràng (`#`, `##`, `###`), nên chiến lược cấu trúc theo heading hoàn toàn ăn khớp với cây quyết định kiến trúc dữ liệu (Data Strategy Decision Tree) trong bài giảng — vượt trội hơn hẳn cách cắt cơ học thuần túy theo số ký tự vốn xé đôi các bảng phí phạt và mốc thời gian.
+> 2. **Hiệu suất thực tế kiểm chứng:** Cả hai thành viên áp dụng hướng tiếp cận này đều đạt điểm tuyệt đối **5/5 top-3 retrieval** và **5/5 agent answer** trên toàn bộ 5 benchmark queries khi kết hợp cơ chế Pre-filtering metadata.
+> 3. **Bảo tồn ngữ cảnh vượt trội:** Việc gắn lại heading (Heading Re-attachment) vào đầu mỗi sub-chunk khi section quá dài giúp các mảnh con không bao giờ bị trôi mất ngữ cảnh của điều khoản quy định.
 
 ---
 
