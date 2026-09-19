@@ -1,0 +1,95 @@
+================================================================================
+                  BENCHMARK RETRIEVAL QUALITY REPORT — K4-L3A                  
+================================================================================
+Corpus directory : data/utsc-library-services
+Strategy         : recursive
+Chunk size       : 400
+Total chunks     : 64
+Store size       : 64 records
+================================================================================
+
+--------------------------------------------------------------------------------
+QUERY 1: What are the UTSC Library’s regular opening hours from Monday to Friday between September 8 and December 22, 2026?
+Gold Answer : The library’s regular weekday hours are 8:00 AM to 10:00 PM. It is closed on October 12, 2026.
+Target Doc  : utsc-library-hours
+Filter      : None
+--------------------------------------------------------------------------------
+  Top-1 (score=+0.2535)          id=utsc-borrowing-policy#17
+         source=utsc-borrowing-policy | preview: Fine forgiveness reasons that do NOT qualify: forgot due date, did not receive courtesy notice, unaware of library policies, borrowed for so...
+  Top-2 (score=+0.2513)          id=utsc-technology-loans#7
+         source=utsc-technology-loans | preview: ### Power, Cables & Accessories - Universal Laptop Power Adapter (Powseed 70W): Universal charger with multiple tips for various laptop mode...
+  Top-3 (score=+0.2269)          id=utsc-borrowing-policy#3
+         source=utsc-borrowing-policy | preview: | Continuing studies students | 14 days | Unlimited | 50 |  ## Exceptions  - Items from the Popular Collection, periodicals, audio visual ma...
+  -> Evaluation : Score=0/2 (Target in top-3: False, Rank: -1, Evidence: False)
+  -> Agent Output: [LLM Summary] Answer generated from retrieved context.
+
+--------------------------------------------------------------------------------
+QUERY 2: As an undergraduate student, how long can I borrow regular library items, and what is my item limit?
+Gold Answer : Undergraduate students have a regular loan period of 14 days and an item limit of 50.
+Target Doc  : utsc-borrowing-policy
+Filter      : None
+--------------------------------------------------------------------------------
+  Top-1 (score=+0.4346) [TARGET] id=utsc-borrowing-policy#15
+         source=utsc-borrowing-policy | preview: ## Fines and Penalties - Privileges withheld when an item is more than 14 days overdue or fines/fees reach $25.00 or greater. - Privileges w...
+  Top-2 (score=+0.3136) [TARGET] id=utsc-borrowing-policy#10
+         source=utsc-borrowing-policy | preview: ### Automatic Renewals Two days before an item is due, the system will automatically try to renew it on your behalf. If not eligible for ren...
+  Top-3 (score=+0.2395) [TARGET] id=utsc-borrowing-policy#1
+         source=utsc-borrowing-policy | preview: | Patron Type | Loan Periods | Maximum Potential Loan Periods | Item Limits | |-------------|--------------|--------------------------------...
+  -> Evaluation : Score=2/2 (Target in top-3: True, Rank: 1, Evidence: True)
+  -> Agent Output: [LLM Summary] Answer generated from retrieved context.
+
+--------------------------------------------------------------------------------
+QUERY 3: Where should a user return a borrowed laptop from the Technology Loans collection?
+Gold Answer : A borrowed laptop should be returned directly to the Info Desk.
+Target Doc  : utsc-technology-loans
+Filter      : None
+--------------------------------------------------------------------------------
+  Top-1 (score=+0.3033)          id=utsc-borrowing-policy#11
+         source=utsc-borrowing-policy | preview: ### Returns - Materials can be returned at the Information and Reference Desk, or drop box across from the desk when unstaffed. - Regular ci...
+  Top-2 (score=+0.2552)          id=utsc-borrowing-policy#7
+         source=utsc-borrowing-policy | preview: ## Designate a Proxy Borrower - Faculty and staff may designate another library borrower to sign out items onto their account. - This servic...
+  Top-3 (score=+0.1994)          id=utsc-borrowing-policy#4
+         source=utsc-borrowing-policy | preview: ### Popular Collection The popular collection includes books, DVDs, magazines, video games, and board games. Located in the Reading Room nea...
+  -> Evaluation : Score=0/2 (Target in top-3: False, Rank: -1, Evidence: True)
+  -> Agent Output: [LLM Summary] Answer generated from retrieved context.
+
+--------------------------------------------------------------------------------
+QUERY 4: A student needs to find a physical course reading placed on reserve. Where is it located?
+Gold Answer : Physical course reserves are located 20 steps to the left of the InfoDesk at the UTSC Library.
+Target Doc  : utsc-course-reserves
+Filter      : {'audience': 'student'}
+--------------------------------------------------------------------------------
+  Top-1 (score=+0.2140)          id=utsc-borrowing-policy#5
+         source=utsc-borrowing-policy | preview: | Item | Loan Periods | Maximum Potential Loan Periods | Holds | |------|--------------|--------------------------------|-------| | Books | ...
+  Top-2 (score=+0.1983)          id=utsc-technology-loans#3
+         source=utsc-technology-loans | preview: ## Available Equipment and Loan Terms  ### Computing & Displays - Windows Laptop: Windows 10 laptop equipped with MS Office 365, MS Teams, Z...
+  Top-3 (score=+0.1581) [TARGET] id=utsc-course-reserves#3
+         source=utsc-course-reserves | preview: How to access online reserves: 1. Look for the Library Reading List app in your Quercus course navigation menu. 2. The courses in which you ...
+  -> Evaluation : Score=1/2 (Target in top-3: True, Rank: 3, Evidence: False)
+  -> Agent Output: [LLM Summary] Answer generated from retrieved context.
+
+  --- [A/B Test Comparison] ---
+  Running WITHOUT filter:
+    No-Filter Top-1: id=utsc-research-publishing#5 (score=+0.4163, doc=utsc-research-publishing)
+    No-Filter Top-2: id=utsc-research-publishing#1 (score=+0.2218, doc=utsc-research-publishing)
+    No-Filter Top-3: id=utsc-borrowing-policy#5 (score=+0.2140, doc=utsc-borrowing-policy)
+  -----------------------------
+
+--------------------------------------------------------------------------------
+QUERY 5: Which service provides a free and secure University of Toronto repository for disseminating and preserving faculty and graduate-student research?
+Gold Answer : TSpace – University of Toronto Research Repository.
+Target Doc  : utsc-research-publishing
+Filter      : None
+--------------------------------------------------------------------------------
+  Top-1 (score=+0.2135)          id=utsc-borrowing-policy#4
+         source=utsc-borrowing-policy | preview: ### Popular Collection The popular collection includes books, DVDs, magazines, video games, and board games. Located in the Reading Room nea...
+  Top-2 (score=+0.2134)          id=utsc-library-spaces#3
+         source=utsc-library-spaces | preview: - One Button Studio: Located in room AC286. Automated video recording studio allowing easy high-definition video presentations at the push o...
+  Top-3 (score=+0.2069)          id=utsc-technology-loans#3
+         source=utsc-technology-loans | preview: ## Available Equipment and Loan Terms  ### Computing & Displays - Windows Laptop: Windows 10 laptop equipped with MS Office 365, MS Teams, Z...
+  -> Evaluation : Score=0/2 (Target in top-3: False, Rank: -1, Evidence: False)
+  -> Agent Output: [LLM Summary] Answer generated from retrieved context.
+
+================================================================================
+FINAL RESULT: Total Retrieval Score = 3 / 10 points
+================================================================================
