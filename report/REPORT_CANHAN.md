@@ -162,7 +162,11 @@ Chạy **5 câu hỏi đánh giá của nhóm** trên mã nguồn cá nhân củ
 **Bao nhiêu câu hỏi trả về chunk có liên quan trong top-3?** 2 / 5 (Câu 2 và Câu 4 có áp dụng metadata filter)
 
 **Điều hay nhất tôi học được từ thành viên khác / nhóm khác (qua demo):**
-> Qua phần trao đổi trong nhóm, tôi nhận thấy chiến lược `HeadingChunker` kết hợp Recursive fallback của bạn Phạm Thanh Trung và `HeadingSectionChunker` (với kỹ thuật Heading Re-attachment) của bạn Trần Nguyễn Thái Duy đã bảo toàn xuất sắc tính phân cấp ngữ cảnh cho các văn bản quy định đại học, giúp cả hai bạn đạt điểm tối đa 5/5 trên cả 5 câu hỏi benchmark. Ngoài ra, ý tưởng chiến lược Custom Parent-child của bạn Từ Hoàng Giang (chunk con 200–300 ký tự để tìm kiếm, chunk cha 500–800 ký tự để làm context trả lời) cũng mở ra hướng giải quyết triệt để vấn đề mất ngữ cảnh xung quanh mà không làm giảm độ chính xác của vector search. Đồng thời, cơ chế tiền lọc (pre-filtering) metadata đã chứng minh vai trò quyết định ở câu hỏi 4 khi giải phóng hoàn toàn top-3 khỏi các tài liệu gây nhiễu của đối tượng khác (`faculty`).
+> Qua phần trao đổi và so sánh trong nhóm, tôi nhận được nhiều bài học rất giá trị:
+> 1. **Về cấu trúc tài liệu:** Chiến lược `HeadingChunker` của bạn Phạm Thanh Trung và `HeadingSectionChunker` (với kỹ thuật Heading Re-attachment) của bạn Trần Nguyễn Thái Duy đã bảo toàn xuất sắc tính phân cấp ngữ cảnh cho các văn bản quy định đại học, giúp cả hai bạn đạt điểm tối đa 5/5 trên cả 5 câu hỏi benchmark.
+> 2. **Về phân đoạn ngữ nghĩa:** Chiến lược `SemanticChunker` của bạn Nguyễn Hồng Phi sử dụng mô hình embedding thật (`text-embedding-3-small`) để tính cosine similarity giữa các câu và cắt theo ngưỡng phân vị (percentile threshold) mang lại độ đồng nhất ngữ nghĩa tuyệt đối, đạt 5/5 điểm benchmark và chứng minh rõ rệt vai trò của A/B testing với filter `audience=student` (từ 0/2 lên 2/2 điểm).
+> 3. **Về cân bằng precision và context:** Ý tưởng `Custom Parent-child` của bạn Từ Hoàng Giang (chunk con 200–300 ký tự để tìm kiếm, chunk cha 500–800 ký tự để làm context trả lời) mở ra giải pháp triệt để cho bài toán đánh đổi giữa độ chính xác vector search và độ đầy đủ của ngữ cảnh cho LLM.
+> 4. **Về vai trò của Metadata Filter:** Cả chiến lược Recursive thuần túy của tôi lẫn Semantic chunking của bạn Phi đều chứng minh pre-filtering metadata là thiết yếu để loại bỏ tài liệu gây nhiễu của đối tượng khác (`faculty` hoặc tài liệu khuyết tật chung), cứu nguy cho top-k retrieval.
 
 ---
 

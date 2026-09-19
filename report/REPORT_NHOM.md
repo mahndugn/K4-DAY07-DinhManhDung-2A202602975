@@ -161,10 +161,53 @@ class HeadingSectionChunker:
 - **Kết quả kiểm thử:** Toàn bộ corpus được chuẩn hóa dưới dạng Markdown với hệ thống đề mục chuẩn chỉnh, hoàn toàn ăn khớp với cây quyết định kiến trúc dữ liệu (Data Strategy Decision Tree) trong bài giảng. Kết quả kiểm thử trên 5 benchmark query khi kết hợp cơ chế Pre-filtering metadata đạt tỷ lệ retrieval top-3 **5/5** và agent answer **5/5**, tạo ra bộ tri thức chuẩn hóa gồm 84 chunks với độ dài trung bình 229.3 ký tự.
 
 **Thành viên 5 — Nguyễn Hồng Phi**
-- **Loại chiến lược:** *(Đang cập nhật)*
-- **Cấu hình dự kiến:** *(Đang cập nhật)*
-- **Mô tả & lý do chọn:** *(Đang cập nhật)*
-- **Code snippet:** *(Đang cập nhật)*
+- **Loại chiến lược:** Semantic (ngữ nghĩa) + Recursive fallback (`SemanticChunker`).
+- **Cấu hình đã kiểm thử:** Tách văn bản thành câu theo dấu câu (`.`, `!`, `?`), dùng embedder thật `text-embedding-3-small` (qua OpenRouter) để nhúng từng câu; tính cosine similarity giữa hai câu liền kề; đặt ranh giới chunk tại vị trí độ tương đồng rơi xuống dưới ngưỡng phân vị 25 của toàn bộ chuỗi similarity; nhóm câu vượt quá 500 ký tự được chia tiếp bằng `RecursiveChunker`; truy xuất `top_k=3`.
+- **Mô tả & lý do chọn:** Corpus dịch vụ – quy định thư viện có nhiều phần từ vựng giống nhau nhưng nói về chủ đề khác (bảng hạn mượn, quy trình trả thiết bị, danh mục thiết bị). Cắt theo số ký tự hoặc theo câu không biết ranh giới nào là chuyển chủ đề thật. Tách tại điểm similarity giảm đột ngột cho phép chunk bám theo chuyển đổi ngữ nghĩa — mỗi chunk là một chủ đề trọn vẹn bất kể độ dài, nên embedding của chunk nguyên vẹn hơn khi truy xuất.
+- **Metadata filter:** Dùng `metadata_filter={"audience": "student"}` cho câu hỏi A/B về mượn/trả khi không thể đến thư viện do khuyết tật — đáp án nằm trong `utsc-borrowing-policy` (student) nhưng `utsc-accessibility-services` (all) cũng nói về proxy borrower với đáp án khác (Pickup Authorization Form), nên filter là bắt buộc để tránh lẫn hai tài liệu. Các câu còn lại chạy không lọc.
+- **Code snippet (custom):**
+```python
+class SemanticChunker:
+    """Embed every sentence, cut between two consecutive sentences whose
+    similarity drops below the percentile threshold — chunk boundaries
+    follow topic shifts instead of a fixed size."""
+
+    def __init__(self, embed_fn, chunk_size: int = 500, percentile: float = 25.0) -> None:
+        self.embed_fn = embed_fn
+        self.chunk_size = chunk_size
+        self.percentile = percentile
+        self._fallback = RecursiveChunker(chunk_size=chunk_size)
+
+    def chunk(self, text: str) -> list[str]:
+        if not text or not text.strip():
+            return []
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()]
+        if len(sentences) == 1:
+            return [sentences[0]]
+
+        vectors = [self.embed_fn(sentence) for sentence in sentences]
+        similarities = [compute_similarity(vectors[i], vectors[i + 1])
+                        for i in range(len(vectors) - 1)]
+        threshold = sorted(similarities)[max(0, int(len(similarities) * self.percentile / 100) - 1)]
+
+        # Split AFTER sentence i when its link to sentence i+1 is weak.
+        groups: list[list[str]] = [[sentences[0]]]
+        for i, similarity in enumerate(similarities):
+            if similarity < threshold:
+                groups.append([sentences[i + 1]])
+            else:
+                groups[-1].append(sentences[i + 1])
+
+        chunks: list[str] = []
+        for group in groups:
+            section = " ".join(group)
+            if len(section) <= self.chunk_size:
+                chunks.append(section)
+            else:
+                chunks.extend(self._fallback.chunk(section))
+        return chunks
+```
+- **Kết quả kiểm thử:** Semantic chunking nhóm câu theo khoảng cách ngữ nghĩa đo bằng chính embedder dùng cho truy xuất, nên ranh giới chunk đồng nhất với không gian vector mà search sẽ so khớp (heading chunker bám cấu trúc soạn sẵn của tài liệu, semantic bám trực tiếp nội dung). Kết quả kiểm thử trên 5 benchmark query đạt retrieval top-3 **5/5** (10/10 điểm theo thang SCORING.md, tính cả lượt có filter của câu A/B) và agent answer **5/5**, với tổng cộng **131 chunks**. A/B test cho thấy giá trị của metadata filter: có `audience=student` đạt 2/2, bỏ filter rơi xuống 0/2 vì top-3 bị tài liệu `utsc-accessibility-services` chiếm chỗ và agent trả lời sai quy trình (dịch vụ lấy sách tại chỗ thay vì proxy borrower).
 
 ### So Sánh Giữa Các Thành Viên
 
@@ -174,15 +217,14 @@ class HeadingSectionChunker:
 | Phạm Thanh Trung | HeadingChunker + Recursive fallback (chunk_size=700) | 10 / 10 (5/5 queries) | Bảo toàn hoàn hảo ranh giới cấu trúc Markdown, chỉ 25 chunks cô đọng, giữ heading ở mọi chunk con, retrieval và agent answer đều đạt 5/5. | Phụ thuộc vào chất lượng heading của Markdown gốc; nếu tài liệu không có heading chuẩn sẽ suy biến về fallback. |
 | Từ Hoàng Giang | Custom Parent-child (Child: 200–300, Parent: 500–800) | Đang thử nghiệm | Tối ưu hóa kép: vector search chính xác trên chunk con, LLM đọc ngữ cảnh đầy đủ từ chunk cha. | Độ phức tạp triển khai cao hơn, cần quản lý quan hệ mapping giữa chunk cha và con trong vector store. |
 | Trần Nguyễn Thái Duy | HeadingSectionChunker + Recursive fallback (chunk_size=500) | 10 / 10 (5/5 queries) | Chia theo heading kết hợp Heading Re-attachment tự động, 84 chunks, độ dài trung bình 229.3 ký tự, retrieval top-3 5/5 và agent answer 5/5. | Sinh ra số lượng chunk nhiều hơn (84 chunks) so với cắt thô do ngưỡng 500 ký tự. |
-| Nguyễn Hồng Phi | *(Chờ cập nhật)* | - | *(Chờ bổ sung)* | *(Chờ bổ sung)* |
+| Nguyễn Hồng Phi | SemanticChunker + Recursive fallback (embedder text-embedding-3-small, percentile 25) | 10 / 10 (5/5 queries) | Bám sát chuyển dịch chủ đề ngữ nghĩa thực tế, đồng nhất với không gian vector tìm kiếm; 131 chunks, retrieval top-3 5/5 và agent answer 5/5. | Cần gọi mô hình embedding thật để tính similarity giữa các câu nên tốn tài nguyên và thời gian tính toán hơn khi chunking. |
 
 **Chiến lược nào tốt nhất cho chủ đề này? Tại sao?**
-> **Chiến lược được ưu tiên theo bài giảng:** Heading/structural kết hợp Recursive fallback (được kiểm chứng qua `HeadingChunker` của Phạm Thanh Trung và `HeadingSectionChunker` của Trần Nguyễn Thái Duy).
+> **Hai chiến lược xuất sắc nhất được chứng minh trong nhóm là:**
+> 1. **Heading/structural + Recursive fallback** (Phạm Thanh Trung & Trần Nguyễn Thái Duy): Phù hợp nhất khi dữ liệu Markdown có cấu trúc phân cấp điều khoản rõ ràng (`#`, `##`, `###`), giúp tạo ra ít chunk hơn (25–84 chunks), tốc độ xử lý nhanh, bảo toàn trọn vẹn ngữ cảnh điều khoản và đạt 5/5 queries.
+> 2. **Semantic chunking + Recursive fallback** (Nguyễn Hồng Phi): Đỉnh cao về độ đồng nhất ngữ nghĩa khi bám sát sự dịch chuyển chủ đề bằng chính mô hình `text-embedding-3-small`, không phụ thuộc vào việc văn bản có heading hay không, cũng đạt tuyệt đối 5/5 queries (131 chunks).
 > 
-> **Lý do:**
-> 1. **Phù hợp với cây quyết định bài giảng:** Corpus được lưu dưới dạng Markdown và có hệ thống heading rõ ràng (`#`, `##`, `###`), nên chiến lược cấu trúc theo heading hoàn toàn ăn khớp với cây quyết định kiến trúc dữ liệu (Data Strategy Decision Tree) trong bài giảng — vượt trội hơn hẳn cách cắt cơ học thuần túy theo số ký tự vốn xé đôi các bảng phí phạt và mốc thời gian.
-> 2. **Hiệu suất thực tế kiểm chứng:** Cả hai thành viên áp dụng hướng tiếp cận này đều đạt điểm tuyệt đối **5/5 top-3 retrieval** và **5/5 agent answer** trên toàn bộ 5 benchmark queries khi kết hợp cơ chế Pre-filtering metadata.
-> 3. **Bảo tồn ngữ cảnh vượt trội:** Việc gắn lại heading (Heading Re-attachment) vào đầu mỗi sub-chunk khi section quá dài giúp các mảnh con không bao giờ bị trôi mất ngữ cảnh của điều khoản quy định.
+> **Kết luận:** Đối với corpus tài liệu thư viện UTSC đã được chuẩn hóa Markdown, nhóm ưu tiên **Heading/structural kết hợp Recursive fallback** làm chiến lược mặc định do cân bằng hoàn hảo giữa hiệu năng xử lý, số lượng chunk cô đọng và chất lượng ngữ cảnh. Khi mở rộng sang các văn bản tự do không có cấu trúc Markdown, **Semantic chunking** là giải pháp thay thế mạnh mẽ nhất.
 
 ---
 
