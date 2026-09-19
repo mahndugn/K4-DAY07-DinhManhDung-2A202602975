@@ -2,11 +2,11 @@
 
 **Nhóm:** DDGPT
 **Thành viên:** 
-Trần Nguyễn Thái Duy 
-Đinh Mạnh Dũng 
-Nguyễn Hồng Phi 
-Phạm Thành Trung 
-Từ Hoàng Giang
+        Trần Nguyễn Thái Duy - 2A202602991
+        Đinh Mạnh Dũng - 2A202602975
+        Nguyễn Hồng Phi - 2A202602750
+        Phạm Thành Trung - 2A202602949
+        Từ Hoàng Giang - 2A202602363
 **Ngày:** 19/09/2026
 
 > **Nộp 1 bản / nhóm.** Phần cá nhân (hướng tiếp cận, kết quả riêng, dự đoán…) mỗi thành viên nộp riêng trong `REPORT_CANHAN.md`. Chi tiết thang điểm: `docs/SCORING.md`.
